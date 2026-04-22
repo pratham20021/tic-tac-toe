@@ -23,25 +23,31 @@ pipeline {
 
         stage('Build & Package') {
             steps {
-                sh 'mvn clean package -DskipTests'
+                dir('tictactoe') {
+                    bat 'mvn clean package -DskipTests'
+                }
             }
             post {
                 success {
-                    archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
+                    archiveArtifacts artifacts: 'tictactoe/target/*.jar', fingerprint: true
                 }
             }
         }
 
         stage('Test') {
             steps {
-                sh 'mvn test'
+                dir('tictactoe') {
+                    bat 'mvn test'
+                }
             }
         }
 
         stage('SonarQube Analysis') {
             steps {
-                withSonarQubeEnv() {
-                    sh "mvn clean verify sonar:sonar -Dsonar.projectKey=${SONAR_PROJECT_KEY}"
+                dir('tictactoe') {
+                    withSonarQubeEnv('SonarQube') {
+                        bat "mvn sonar:sonar -Dsonar.projectKey=${SONAR_PROJECT_KEY}"
+                    }
                 }
             }
         }
@@ -56,8 +62,10 @@ pipeline {
 
         stage('Docker Build') {
             steps {
-                sh "docker build -t ${DOCKERHUB_USER}/${IMAGE_NAME}:${IMAGE_TAG} ."
-                sh "docker tag ${DOCKERHUB_USER}/${IMAGE_NAME}:${IMAGE_TAG} ${DOCKERHUB_USER}/${IMAGE_NAME}:latest"
+                dir('tictactoe') {
+                    bat "docker build -t ${DOCKERHUB_USER}/${IMAGE_NAME}:${IMAGE_TAG} ."
+                    bat "docker tag ${DOCKERHUB_USER}/${IMAGE_NAME}:${IMAGE_TAG} ${DOCKERHUB_USER}/${IMAGE_NAME}:latest"
+                }
             }
         }
 
@@ -66,18 +74,18 @@ pipeline {
                 withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
                                                   usernameVariable: 'DOCKER_USER',
                                                   passwordVariable: 'DOCKER_PASS')]) {
-                    sh "echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin"
-                    sh "docker push ${DOCKERHUB_USER}/${IMAGE_NAME}:${IMAGE_TAG}"
-                    sh "docker push ${DOCKERHUB_USER}/${IMAGE_NAME}:latest"
+                    bat "docker login -u %DOCKER_USER% -p %DOCKER_PASS%"
+                    bat "docker push ${DOCKERHUB_USER}/${IMAGE_NAME}:${IMAGE_TAG}"
+                    bat "docker push ${DOCKERHUB_USER}/${IMAGE_NAME}:latest"
                 }
             }
         }
 
         stage('Deploy') {
             steps {
-                sh "docker stop ${IMAGE_NAME} || true"
-                sh "docker rm ${IMAGE_NAME} || true"
-                sh "docker run -d -p 8080:8080 --name ${IMAGE_NAME} ${DOCKERHUB_USER}/${IMAGE_NAME}:latest"
+                bat "docker stop ${IMAGE_NAME} || exit 0"
+                bat "docker rm ${IMAGE_NAME} || exit 0"
+                bat "docker run -d -p 8080:8080 --name ${IMAGE_NAME} ${DOCKERHUB_USER}/${IMAGE_NAME}:latest"
             }
         }
     }
